@@ -1,0 +1,214 @@
+name: Build Calculator
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Generate Calculator App
+        run: |
+          flutter create . --org com.stealth --project-name calculator
+          
+          # Main App Code
+          cat << 'EOF' > lib/main.dart
+          import 'dart:io';
+          import 'package:flutter/material.dart';
+          import 'package:image_picker/image_picker.dart';
+          import 'package:path_provider/path_provider.dart';
+          import 'package:shared_preferences/shared_preferences.dart';
+          import 'package:url_launcher/url_launcher.dart';
+
+          void main() => runApp(const CalculatorApp());
+
+          class CalculatorApp extends StatelessWidget {
+            const CalculatorApp({super.key});
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'Calculator',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+                home: const CalculatorScreen(),
+              );
+            }
+          }
+
+          class CalculatorScreen extends StatefulWidget {
+            const CalculatorScreen({super.key});
+            @override
+            State<CalculatorScreen> createState() => _CalculatorScreenState();
+          }
+
+          class _CalculatorScreenState extends State<CalculatorScreen> {
+            String _input = '0';
+            String _passcode = '1234';
+            String _decoyPasscode = '9999';
+
+            @override
+            void initState() {
+              super.initState();
+              _loadPasscodes();
+            }
+
+            Future<void> _loadPasscodes() async {
+              final prefs = await SharedPreferences.getInstance();
+              setState(() {
+                _passcode = prefs.getString('passcode') ?? '1234';
+                _decoyPasscode = prefs.getString('decoy_passcode') ?? '9999';
+              });
+            }
+
+            void _onButtonPressed(String text) {
+              setState(() {
+                if (text == 'C') {
+                  _input = '0';
+                } else if (text == '=') {
+                  if (_input == _passcode) {
+                    _input = '0';
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const StorageScreen(isDecoy: false)));
+                  } else if (_input == _decoyPasscode) {
+                    _input = '0';
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const StorageScreen(isDecoy: true)));
+                  } else {
+                    _calculateResult();
+                  }
+                } else {
+                  _input = (_input == '0') ? text : _input + text;
+                }
+              });
+            }
+
+            void _calculateResult() {
+              try {
+                String exp = _input.replaceAll('×', '*').replaceAll('÷', '/');
+                double res = double.parse(exp); 
+                _input = res.toStringAsFixed(res.truncateToDouble() == res ? 0 : 2);
+              } catch (e) {
+                _input = 'Error';
+              }
+            }
+
+            Widget _btn(String t, {Color? c, Color? tc}) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(6.0),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(22.0),
+                      backgroundColor: c ?? Colors.grey[850],
+                    ),
+                    onPressed: () => _onButtonPressed(t),
+                    child: Text(t, style: TextStyle(fontSize: 26, color: tc ?? Colors.white)),
+                  ),
+                ),
+              );
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          alignment: Alignment.bottomRight,
+                          padding: const EdgeInsets.all(24),
+                          child: Text(_input, style: const TextStyle(fontSize: 60, color: Colors.white)),
+                        ),
+                      ),
+                      Column(
+                        children: [
+                          Row(children: [_btn('C', c: Colors.grey[400], tc: Colors.black), _btn('(', c: Colors.grey[400], tc: Colors.black), _btn(')', c: Colors.grey[400], tc: Colors.black), _btn('÷', c: Colors.orange)]),
+                          Row(children: [_btn('7'), _btn('8'), _btn('9'), _btn('×', c: Colors.orange)]),
+                          Row(children: [_btn('4'), _btn('5'), _btn('6'), _btn('-', c: Colors.orange)]),
+                          Row(children: [_btn('1'), _btn('2'), _btn('3'), _btn('+', c: Colors.orange)]),
+                          Row(children: [_btn('0'), _btn('.'), _btn('=', c: Colors.orange)]),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+
+          class StorageScreen extends StatelessWidget {
+            final bool isDecoy;
+            const StorageScreen({super.key, required this.isDecoy});
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                appBar: AppBar(
+                  title: Text(isDecoy ? 'Gallery' : 'Storage'),
+                  backgroundColor: Colors.grey[900],
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
+                      onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                    )
+                  ],
+                ),
+                body: Center(
+                  child: Text(
+                    isDecoy ? 'Gallery' : 'Storage Active',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
+          # Configure Manifest & Pubspec for Pure Calculator Name
+          cat << 'EOF' > pubspec.yaml
+          name: calculator
+          description: "Calculator"
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            image_picker: ^1.1.2
+            shared_preferences: ^2.2.2
+            path_provider: ^2.1.2
+            url_launcher: ^6.2.5
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+      - name: Build Android App (.apk)
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Save APK File
+        uses: actions/upload-artifact@v3
+        with:
+          name: Calculator
+          path: build/app/outputs/flutter-apk/app-release.apk
+          
