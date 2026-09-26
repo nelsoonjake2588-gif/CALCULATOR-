@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -25,9 +25,9 @@ jobs:
 
       - name: Generate Calculator App
         run: |
-          flutter create . --org com.stealth --project-name calculator
+          flutter create --force --org com.stealth --project-name calculator .
           
-          # Main App Code
+          # Write main code
           cat << 'EOF' > lib/main.dart
           import 'dart:io';
           import 'package:flutter/material.dart';
@@ -181,7 +181,7 @@ jobs:
           }
           EOF
 
-          # Configure Manifest & Pubspec for Pure Calculator Name
+          # Configure pubspec
           cat << 'EOF' > pubspec.yaml
           name: calculator
           description: "Calculator"
@@ -207,7 +207,7 @@ jobs:
         run: flutter build apk --release --no-tree-shake-icons
 
       - name: Save APK File
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Calculator
           path: build/app/outputs/flutter-apk/app-release.apk
